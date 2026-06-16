@@ -23,6 +23,7 @@ import lcd
 import time
 from machine import UART, Timer, PWM
 from fpioa_manager import fm
+from Maix import GPIO
 import KPU as kpu
 import gc
 
@@ -30,24 +31,33 @@ import gc
 # CONFIGURACION DE HARDWARE
 # =============================================================================
 
-# Pines K210 (ajustar segun conexion real)
+# Pines K210 - Sistema de ingestion con motores DC y encoder RPM
 PIN_SENSOR_ENTRADA = 10    # TCRT5000 ranura de entrada
 PIN_SENSOR_CAPTURA  = 11   # TCRT5000 zona de captura
-PIN_RODILLO_1       = 12   # PWM servo 360° rodillo 1
-PIN_RODILLO_2       = 13   # PWM servo 360° rodillo 2
-PIN_COMPUERTA       = 14   # PWM servo 180° compuerta seleccion
+PIN_RPM             = 8    # Encoder optico FC-03 (velocidad + presencia billete)
+PIN_MOTOR1_ENA      = 34   # PWM L298N motor DC 1 (ENA)
+PIN_MOTOR2_ENB      = 35   # PWM L298N motor DC 2 (ENB)
+PIN_COMPUERTA       = 33   # PWM servo SG90 compuerta seleccion
 PIN_LED_R           = 15
 PIN_LED_G           = 16
 PIN_LED_B           = 17
+PIN_BUZZER          = 20   # Piezo buzzer
 
 # UART para comunicacion con Raspberry Pi
 UART_TX = 6
 UART_RX = 7
 
-# Configurar UART
+# Configurar pines via FPIOA
 fm.register(UART_TX, fm.fpioa.UART1_TX, force=True)
 fm.register(UART_RX, fm.fpioa.UART1_RX, force=True)
+fm.register(PIN_RPM, fm.fpioa.GPIOHS0, force=True)
+fm.register(PIN_SENSOR_ENTRADA, fm.fpioa.GPIOHS1, force=True)
+fm.register(PIN_SENSOR_CAPTURA, fm.fpioa.GPIOHS2, force=True)
 uart = UART(UART1, baudrate=115200, timeout=1000, timeout_char=1000)
+
+# Sensores TCRT5000
+sensor_entrada = GPIO(GPIO.GPIOHS1, GPIO.IN, GPIO.PULL_UP)
+sensor_captura = GPIO(GPIO.GPIOHS2, GPIO.IN, GPIO.PULL_UP)
 
 # =============================================================================
 # MODELOS (rutas en SD)
@@ -302,35 +312,70 @@ def receive_from_pi(timeout_ms=5000):
 # =============================================================================
 
 # NOTA: Inicializar PWMs en setup()
-rodillo_1 = None
-rodillo_2 = None
+motor1_ena = None
+motor2_enb = None
 compuerta = None
+rpm_sensor = None
+rpm_pulses = 0           # Contador de pulsos del encoder
 
 def setup_actuators():
-    global rodillo_1, rodillo_2, compuerta
-    # PWM 50Hz para servos
-    rodillo_1 = PWM(PWM.TIMER0, freq=50, duty=0, pin=PIN_RODILLO_1)
-    rodillo_2 = PWM(PWM.TIMER0, freq=50, duty=0, pin=PIN_RODILLO_2)
-    compuerta = PWM(PWM.TIMER1, freq=50, duty=0, pin=PIN_COMPUERTA)
+    global motor1_ena, motor2_enb, compuerta
+    # PWM 5KHz para motores DC via L298N (TIMER0)
+    motor1_ena = PWM(PWM.TIMER0, freq=5000, duty=0, pin=PIN_MOTOR1_ENA)
+    motor2_enb = PWM(PWM.TIMER0, freq=5000, duty=0, pin=PIN_MOTOR2_ENB)
+    # PWM 50Hz para servo SG90 compuerta (TIMER1)
+    compuerta = PWM(PWM.TIMER1, freq=50, duty=7.5, pin=PIN_COMPUERTA)
 
 def rollers_start(speed_pct=50):
-    """Activa rodillos. speed_pct: 0-100"""
-    duty = 7.5 + (speed_pct / 100.0) * 2.5  # 5-10% duty = velocidad
-    rodillo_1.duty(duty)
-    rodillo_2.duty(duty)
+    """Activa motores DC. speed_pct: 0-100% del duty cycle"""
+    motor1_ena.duty(speed_pct)
+    motor2_enb.duty(speed_pct)
 
 def rollers_stop():
-    rodillo_1.duty(7.5)  # neutro para servo continuo
-    rodillo_2.duty(7.5)
+    """Detiene motores DC (duty 0%)"""
+    motor1_ena.duty(0)
+    motor2_enb.duty(0)
 
 def compuerta_autentico():
-    compuerta.duty(2.5)  # 0°
+    """Servo a 0° (billete autentico)"""
+    compuerta.duty(2.5)
 
 def compuerta_falso():
-    compuerta.duty(12.5) # 90°
+    """Servo a 180° (billete falso)"""
+    compuerta.duty(12.5)
 
 def compuerta_neutro():
-    compuerta.duty(7.5)  # 45°
+    """Servo a 90° (posicion central)"""
+    compuerta.duty(7.5)
+
+# =============================================================================
+# ENCODER RPM (sensor de velocidad y presencia de billete)
+# =============================================================================
+
+def rpm_callback(pin):
+    """Interrupcion: cuenta cada pulso del encoder optico"""
+    global rpm_pulses
+    rpm_pulses += 1
+
+def setup_rpm():
+    """Configura el encoder RPM con interrupcion por flanco"""
+    global rpm_sensor
+    rpm_sensor = GPIO(GPIO.GPIOHS0, GPIO.IN, GPIO.PULL_UP)
+    rpm_sensor.irq(rpm_callback, GPIO.IRQ_FALLING)
+
+def bill_present(check_ms=200):
+    """Verifica si hay billete: retorna True si hay pulsos recientes"""
+    global rpm_pulses
+    prev = rpm_pulses
+    time.sleep_ms(check_ms)
+    return rpm_pulses > prev
+
+def get_rpm_speed():
+    """Obtiene velocidad en pulsos por segundo (aproximado)"""
+    global rpm_pulses
+    prev = rpm_pulses
+    time.sleep_ms(100)
+    return (rpm_pulses - prev) * 10
 
 # =============================================================================
 # BUZZER
@@ -338,17 +383,19 @@ def compuerta_neutro():
 
 buzzer = None
 
-def setup_buzzer(pin):
+def setup_buzzer():
     global buzzer
-    buzzer = PWM(PWM.TIMER2, freq=0, duty=0, pin=pin)
+    buzzer = PWM(PWM.TIMER2, freq=0, duty=0, pin=PIN_BUZZER)
 
 def beep_aceptacion():
+    """Beep corto agudo: billete autentico"""
     buzzer.freq(1000)
     buzzer.duty(50)
     time.sleep_ms(200)
     buzzer.duty(0)
 
 def beep_rechazo():
+    """Beep largo grave: billete falso"""
     buzzer.freq(300)
     buzzer.duty(50)
     time.sleep_ms(500)
@@ -382,8 +429,9 @@ def main():
     # Inicializar hardware
     init_camera()
     setup_actuators()
+    setup_rpm()
+    setup_buzzer()
     init_display()
-    # setup_buzzer(20)  # pin del buzzer
     
     show_status("IR-BillVerifier\nLISTO")
     
@@ -391,18 +439,24 @@ def main():
     classifier_task = kpu.load(MODEL_CLASSIFIER)
     
     while True:
-        # --- ESPERAR BILLETE ---
-        # while GPIO(PIN_SENSOR_ENTRADA).value() == 0:
-        #     time.sleep_ms(100)
-        
+        # --- ESPERAR BILLETE (TCRT5000 entrada + RPM como confirmacion) ---
+        show_status("Esperando\nbillete...")
+        while sensor_entrada.value() == 1:
+            time.sleep_ms(100)
+
         show_status("Procesando...")
-        
-        # --- ACTIVAR RODILLOS ---
-        # rollers_start(speed_pct=50)
-        # while GPIO(PIN_SENSOR_CAPTURA).value() == 0:
-        #     time.sleep_ms(50)
-        # rollers_stop()
-        # time.sleep_ms(200)  # estabilizar
+
+        # --- ACTIVAR MOTORES DC (rodillos) ---
+        rollers_start(speed_pct=60)
+        # Esperar a que el billete llegue a zona de captura
+        timeout = time.ticks_ms()
+        while sensor_captura.value() == 1:
+            if time.ticks_diff(time.ticks_ms(), timeout) > 5000:
+                rollers_stop()
+                break
+            time.sleep_ms(50)
+        rollers_stop()
+        time.sleep_ms(200)  # estabilizar
         
         # --- FASE 1: CLASIFICACION (3 frames, promedio) ---
         denom, rotado, conf_clas = classify_bill(classifier_task, n_frames=3)
