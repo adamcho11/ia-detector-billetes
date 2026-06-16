@@ -1,0 +1,277 @@
+{
+  "version": "1.0",
+  "feature_type": "LBP + DCT Ensemble",
+  "score_formula": "0.6 * LBP_SVM + 0.4 * DCT_IsolationForest",
+  "grupos": {
+    "animal_100bs/100_Bs/reverso": {
+      "label": "animal_100bs",
+      "denominacion": "100_Bs",
+      "lado": "reverso",
+      "umbral_lbp": -0.000431739631885919,
+      "umbral_dct": -0.034258218632241384,
+      "umbral_ensemble": -0.004771614033131005,
+      "n_crops_entrenamiento": 90
+    },
+    "animal_10bs/10_Bs/reverso": {
+      "label": "animal_10bs",
+      "denominacion": "10_Bs",
+      "lado": "reverso",
+      "umbral_lbp": -0.0003685226010955611,
+      "umbral_dct": -0.024530221164093754,
+      "umbral_ensemble": -0.0011253541589321076,
+      "n_crops_entrenamiento": 90
+    },
+    "animal_200bs/200_Bs/reverso": {
+      "label": "animal_200bs",
+      "denominacion": "200_Bs",
+      "lado": "reverso",
+      "umbral_lbp": -0.0005118804117543064,
+      "umbral_dct": -0.017248598274447403,
+      "umbral_ensemble": -0.000704063998391252,
+      "n_crops_entrenamiento": 91
+    },
+    "animal_20bs/20_Bs/reverso": {
+      "label": "animal_20bs",
+      "denominacion": "20_Bs",
+      "lado": "reverso",
+      "umbral_lbp": -0.00037087275100817883,
+      "umbral_dct": -0.04433812313545407,
+      "umbral_ensemble": -0.0052577846069557415,
+      "n_crops_entrenamiento": 90
+    },
+    "animal_50bs/50_Bs/reverso": {
+      "label": "animal_50bs",
+      "denominacion": "50_Bs",
+      "lado": "reverso",
+      "umbral_lbp": -0.00041407200582542546,
+      "umbral_dct": -0.02928802548455529,
+      "umbral_ensemble": -0.0008033099653821659,
+      "n_crops_entrenamiento": 90
+    },
+    "personaje_100bs/100_Bs/anverso": {
+      "label": "personaje_100bs",
+      "denominacion": "100_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.0003657204448223145,
+      "umbral_dct": -0.04006154708686592,
+      "umbral_ensemble": -0.00870608661236604,
+      "n_crops_entrenamiento": 90
+    },
+    "personaje_10bs/10_Bs/anverso": {
+      "label": "personaje_10bs",
+      "denominacion": "10_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.00039190763770816317,
+      "umbral_dct": -0.021219204646100134,
+      "umbral_ensemble": -0.001741066297035361,
+      "n_crops_entrenamiento": 90
+    },
+    "personaje_200bs/200_Bs/anverso": {
+      "label": "personaje_200bs",
+      "denominacion": "200_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.00044539809811168783,
+      "umbral_dct": -0.012912356060316377,
+      "umbral_ensemble": -0.002142304097680353,
+      "n_crops_entrenamiento": 91
+    },
+    "personaje_20bs/20_Bs/anverso": {
+      "label": "personaje_20bs",
+      "denominacion": "20_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.0003562372350398907,
+      "umbral_dct": -0.03909141409914088,
+      "umbral_ensemble": 0.0013931556543812125,
+      "n_crops_entrenamiento": 90
+    },
+    "personaje_50bs/50_Bs/anverso": {
+      "label": "personaje_50bs",
+      "denominacion": "50_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.0002575855659271986,
+      "umbral_dct": -0.024497485258286246,
+      "umbral_ensemble": 0.004976825448080124,
+      "n_crops_entrenamiento": 91
+    },
+    "serie_a/100_Bs/anverso": {
+      "label": "serie_a",
+      "denominacion": "100_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.0004050734790419508,
+      "umbral_dct": -0.03527373365453066,
+      "umbral_ensemble": -0.012657831806415106,
+      "n_crops_entrenamiento": 181
+    },
+    "serie_a/10_Bs/anverso": {
+      "label": "serie_a",
+      "denominacion": "10_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.00043829738361448543,
+      "umbral_dct": -0.02794429018984746,
+      "umbral_ensemble": -0.00850578804542657,
+      "n_crops_entrenamiento": 180
+    },
+    "serie_a/200_Bs/anverso": {
+      "label": "serie_a",
+      "denominacion": "200_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.0004328736127241051,
+      "umbral_dct": -0.10742997634706265,
+      "umbral_ensemble": -0.015560414865691678,
+      "n_crops_entrenamiento": 181
+    },
+    "serie_a/20_Bs/anverso": {
+      "label": "serie_a",
+      "denominacion": "20_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.0004274813402857092,
+      "umbral_dct": -0.017212373740434654,
+      "umbral_ensemble": 0.006185704703691928,
+      "n_crops_entrenamiento": 180
+    },
+    "serie_a/50_Bs/anverso": {
+      "label": "serie_a",
+      "denominacion": "50_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.0004447401683145513,
+      "umbral_dct": -0.0250946236507276,
+      "umbral_ensemble": -0.00959826881046763,
+      "n_crops_entrenamiento": 184
+    },
+    "valor_100bs/100_Bs/anverso": {
+      "label": "valor_100bs",
+      "denominacion": "100_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.00034189587258299793,
+      "umbral_dct": -0.04834397344223688,
+      "umbral_ensemble": -0.0109366301444253,
+      "n_crops_entrenamiento": 91
+    },
+    "valor_10bs/10_Bs/anverso": {
+      "label": "valor_10bs",
+      "denominacion": "10_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.00033933191389205254,
+      "umbral_dct": -0.041511598786276714,
+      "umbral_ensemble": -0.0017528123553170617,
+      "n_crops_entrenamiento": 90
+    },
+    "valor_200bs/200_Bs/anverso": {
+      "label": "valor_200bs",
+      "denominacion": "200_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.0003972109319239736,
+      "umbral_dct": -0.02948668129794467,
+      "umbral_ensemble": -0.007971244912442998,
+      "n_crops_entrenamiento": 90
+    },
+    "valor_20bs/20_Bs/anverso": {
+      "label": "valor_20bs",
+      "denominacion": "20_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.0004143488561617131,
+      "umbral_dct": -0.03230490254079189,
+      "umbral_ensemble": 0.0007891749938135527,
+      "n_crops_entrenamiento": 90
+    },
+    "valor_50bs/50_Bs/anverso": {
+      "label": "valor_50bs",
+      "denominacion": "50_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.00036892780428219305,
+      "umbral_dct": -0.033165929839482716,
+      "umbral_ensemble": -0.013254109091980163,
+      "n_crops_entrenamiento": 93
+    },
+    "valor_ir_100bs/100_Bs/anverso": {
+      "label": "valor_ir_100bs",
+      "denominacion": "100_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.0003182115866810753,
+      "umbral_dct": -0.045432044182644266,
+      "umbral_ensemble": -0.012789803261185156,
+      "n_crops_entrenamiento": 90
+    },
+    "valor_ir_100bs/100_Bs/reverso": {
+      "label": "valor_ir_100bs",
+      "denominacion": "100_Bs",
+      "lado": "reverso",
+      "umbral_lbp": -0.00046336194432367196,
+      "umbral_dct": -0.034548702303880865,
+      "umbral_ensemble": -0.0030889038082114626,
+      "n_crops_entrenamiento": 90
+    },
+    "valor_ir_10bs/10_Bs/anverso": {
+      "label": "valor_ir_10bs",
+      "denominacion": "10_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.000399891928256636,
+      "umbral_dct": -0.024794653279600218,
+      "umbral_ensemble": -0.002721130953280933,
+      "n_crops_entrenamiento": 90
+    },
+    "valor_ir_10bs/10_Bs/reverso": {
+      "label": "valor_ir_10bs",
+      "denominacion": "10_Bs",
+      "lado": "reverso",
+      "umbral_lbp": -0.0003348604542960143,
+      "umbral_dct": -0.01825702634656675,
+      "umbral_ensemble": -0.005215689048571016,
+      "n_crops_entrenamiento": 90
+    },
+    "valor_ir_200bs/200_Bs/anverso": {
+      "label": "valor_ir_200bs",
+      "denominacion": "200_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.0004869537959331982,
+      "umbral_dct": -0.06418697100189374,
+      "umbral_ensemble": -0.02546782200831465,
+      "n_crops_entrenamiento": 91
+    },
+    "valor_ir_200bs/200_Bs/reverso": {
+      "label": "valor_ir_200bs",
+      "denominacion": "200_Bs",
+      "lado": "reverso",
+      "umbral_lbp": -0.00044763762242369665,
+      "umbral_dct": -0.06654776436217241,
+      "umbral_ensemble": -0.0231839174257585,
+      "n_crops_entrenamiento": 91
+    },
+    "valor_ir_20bs/20_Bs/anverso": {
+      "label": "valor_ir_20bs",
+      "denominacion": "20_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.0004573512294312959,
+      "umbral_dct": -0.045873571448535884,
+      "umbral_ensemble": -0.004023914109287056,
+      "n_crops_entrenamiento": 90
+    },
+    "valor_ir_20bs/20_Bs/reverso": {
+      "label": "valor_ir_20bs",
+      "denominacion": "20_Bs",
+      "lado": "reverso",
+      "umbral_lbp": -0.0003728369298927559,
+      "umbral_dct": -0.006749507192302167,
+      "umbral_ensemble": 9.738368630039632e-06,
+      "n_crops_entrenamiento": 90
+    },
+    "valor_ir_50bs/50_Bs/anverso": {
+      "label": "valor_ir_50bs",
+      "denominacion": "50_Bs",
+      "lado": "anverso",
+      "umbral_lbp": -0.0004880605467938781,
+      "umbral_dct": -0.04698082500671976,
+      "umbral_ensemble": 0.0024465951249126243,
+      "n_crops_entrenamiento": 91
+    },
+    "valor_ir_50bs/50_Bs/reverso": {
+      "label": "valor_ir_50bs",
+      "denominacion": "50_Bs",
+      "lado": "reverso",
+      "umbral_lbp": -0.0003708139645823427,
+      "umbral_dct": -0.016876179534015802,
+      "umbral_ensemble": -0.002610841127147311,
+      "n_crops_entrenamiento": 90
+    }
+  }
+}
