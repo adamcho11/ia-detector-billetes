@@ -58,7 +58,7 @@
     fm.register(UART_TX, fm.fpioa.UART1_TX, force=True)
     fm.register(UART_RX, fm.fpioa.UART1_RX, force=True)
     fm.register(PIN_RPM, fm.fpioa.GPIOHS0, force=True)
-    uart = UART(UART1, baudrate=115200, timeout=1000, timeout_char=1000)
+    uart = UART(UART.UART1, 115200, 8, 0, 0, timeout=1000, read_buf_len=256)
 
     # =============================================================================
     # MODELOS (rutas en SD)
