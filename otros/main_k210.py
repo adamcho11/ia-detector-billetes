@@ -385,7 +385,7 @@ buzzer = None
 def setup_buzzer():
     global buzzer
     tim_buzz = Timer(Timer.TIMER2, Timer.CHANNEL0, mode=Timer.MODE_PWM)
-    buzzer = PWM(tim_buzz, freq=0, duty=0, pin=PIN_BUZZER)
+    buzzer = PWM(tim_buzz, freq=1000, duty=0, pin=PIN_BUZZER)
 
 def alarma_detectado():
     """Alarma al detectar billete: 3 tonos alternados"""
