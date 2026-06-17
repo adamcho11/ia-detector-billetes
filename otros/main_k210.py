@@ -2,18 +2,28 @@
 =============================================================================
 IR-BillVerifier - Maix Bit (K210) Firmware Principal
 =============================================================================
+Hardware:
+  - Motores DC: IO34 (ENA1) / IO35 (ENB2) via L298N, PWM 5KHz (TIMER0)
+  - Servo SG90 compuerta: IO33, PWM 50Hz (TIMER1)
+  - Encoder RPM FC-03: IO8, GPIOHS0 con IRQ
+  - Buzzer: IO20, PWM (TIMER2)
+  - TCRT5000 entrada: IO10, captura: IO11 (reserva)
+  - UART RPi: IO6 TX / IO7 RX, 115200 baud
+  - RGB LED: IO15 R / IO16 G / IO17 B
+
 Flujo:
-  1. Sensor TCRT5000 detecta billete → activa rodillos
-  2. Captura 3 frames IR via OV2640
-  3. Clasifica denominacion + orientacion (promedio de 3 frames)
-  4. Libera memoria del clasificador
-  5. Carga detector YOLO especifico por denominacion
-  6. Detecta features IR → bounding boxes + etiquetas
-  7. Determina lado del billete (anverso/reverso, lado A/B)
-  8. Recorta crops detectados
-  9. Transmite vía UART a Raspberry Pi:
-     {denom, orientacion, lado, n_crops, [crop_data...]}
- 10. Recibe resultado de Pi → activa servo seleccion + OLED + buzzer
+  1. Espera flanco en encoder (Pin 8) -> alarma + cooldown 5s
+  2. Servo baja (abre entrada)
+  3. Motores DC avanzan 0.8s (primer jalado)
+  4. Servo sube (cierra)
+  5. Motores DC avanzan 1.1s (segundo jalado -> billete en zona captura)
+  6. Clasifica denominacion + orientacion
+  7. Libera clasificador, carga detector YOLO por denominacion
+  8. Detecta features IR -> bounding boxes + etiquetas
+  9. Recorta crops, transmite via UART a Raspberry Pi
+ 10. Espera respuesta de RPi (NO avanza hasta tener veredicto)
+ 11. Tercer avance de motores + compuerta segun veredicto + buzzer
+ 12. Si encoder se activa durante secuencia: +1 iteracion extra
 =============================================================================
 """
 
@@ -387,18 +397,38 @@ def setup_buzzer():
     global buzzer
     buzzer = PWM(PWM.TIMER2, freq=0, duty=0, pin=PIN_BUZZER)
 
+def alarma_detectado():
+    """Alarma al detectar billete: 3 tonos alternados"""
+    for _ in range(3):
+        buzzer.freq(523)
+        buzzer.duty(50)
+        time.sleep(0.15)
+        buzzer.freq(587)
+        buzzer.duty(50)
+        time.sleep(0.15)
+    buzzer.duty(0)
+
 def beep_aceptacion():
     """Beep corto agudo: billete autentico"""
-    buzzer.freq(1000)
+    buzzer.freq(823)
     buzzer.duty(50)
-    time.sleep_ms(200)
+    time.sleep_ms(80)
     buzzer.duty(0)
 
 def beep_rechazo():
-    """Beep largo grave: billete falso"""
-    buzzer.freq(300)
+    """Tonos graves repetidos: billete falso"""
+    for _ in range(2):
+        buzzer.freq(300)
+        buzzer.duty(50)
+        time.sleep_ms(300)
+        buzzer.duty(0)
+        time.sleep_ms(100)
+
+def beep_listo():
+    """Beep sistema listo"""
+    buzzer.freq(1000)
     buzzer.duty(50)
-    time.sleep_ms(500)
+    time.sleep_ms(50)
     buzzer.duty(0)
 
 # =============================================================================
@@ -420,95 +450,204 @@ def show_result(denom, resultado, score):
     lcd.draw_string(10, 30, f"{resultado} ({score:.1%})", color, lcd.WHITE)
 
 # =============================================================================
+# SECUENCIA MECANICA DE INGESTION
+# =============================================================================
+
+def ejecutar_fase_ingestion():
+    """
+    Fase 1 y 2: ingesta del billete hasta posicion de captura.
+    1. Servo baja (abre entrada)
+    2. Primer avance motores 0.8s
+    3. Servo sube (cierra)
+    4. Segundo avance motores 1.1s (billete en zona captura)
+    Retorna: True si el encoder detecto cambio durante la secuencia
+    """
+    global rpm_pulses
+    rpm_antes = rpm_pulses
+
+    # 1. Bajar servo (abrir compuerta de entrada)
+    compuerta.duty(2.5)          # 0° = abierto
+    time.sleep(0.22)
+    time.sleep(0.2)
+
+    # 2. Primer avance de motores (jalar billete)
+    rollers_start(speed_pct=100)
+    time.sleep(0.8)
+    rollers_stop()
+    time.sleep(0.5)
+
+    # 3. Subir servo (cerrar compuerta)
+    compuerta.duty(12.5)         # 180° = cerrado
+    time.sleep(0.2)
+    time.sleep(0.5)
+
+    # 4. Segundo avance de motores (llevar billete a zona captura)
+    rollers_start(speed_pct=100)
+    time.sleep(1.1)
+    rollers_stop()
+    compuerta_neutro()
+
+    # Verificar si hubo actividad en el encoder durante la secuencia
+    return rpm_pulses > rpm_antes
+
+
+def ejecutar_tercer_avance(resultado):
+    """
+    Fase 3: tercer avance de motores DESPUES del veredicto.
+    Orientacion de la compuerta segun resultado.
+    """
+    if resultado == "REAL":
+        compuerta_autentico()
+    else:
+        compuerta_falso()
+
+    rollers_start(speed_pct=100)
+    time.sleep(2.0)
+    rollers_stop()
+
+
+def ejecutar_fase_inferencia(classifier_task):
+    """
+    Pipeline completo: clasificar -> detectar -> enviar a RPi -> esperar respuesta.
+    Retorna: (denom, resultado, score)
+    """
+    # --- CLASIFICACION ---
+    denom, rotado, conf_clas = classify_bill(classifier_task, n_frames=3)
+    print(f"Clasificacion: {denom} | Rotado: {rotado} | Conf: {conf_clas:.2%}")
+
+    # --- LIBERAR CLASIFICADOR ---
+    kpu.deinit(classifier_task)
+    gc.collect()
+
+    # --- DETECCION YOLO ---
+    detections = detect_features(denom)
+    print(f"Detecciones: {len(detections)}")
+    for label, x1, y1, x2, y2, conf in detections:
+        print(f"  {label}: ({x1},{y1})-({x2},{y2}) conf={conf:.2%}")
+
+    lado = determine_side(detections)
+    print(f"Lado: {lado}")
+
+    # --- RECORTAR CROPS ---
+    img_raw = sensor.snapshot()
+    crops = crop_features(img_raw, detections)
+
+    # --- ENVIAR A RASPBERRY PI ---
+    send_to_pi(denom, rotado, lado, crops)
+    print("Datos enviados a Pi")
+
+    # --- ESPERAR RESPUESTA ---
+    resultado, score = receive_from_pi(timeout_ms=8000)
+    print(f"Respuesta Pi: {resultado} (score={score})")
+
+    return denom, resultado, score
+
+
+# =============================================================================
 # BUCLE PRINCIPAL
 # =============================================================================
 
 def main():
     print("IR-BillVerifier iniciando...")
-    
+
     # Inicializar hardware
     init_camera()
     setup_actuators()
     setup_rpm()
     setup_buzzer()
     init_display()
-    
-    show_status("IR-BillVerifier\nLISTO")
-    
-    # Cargar clasificador una vez (se recarga si es necesario)
+    compuerta_neutro()
+
+    show_status("SISTEMA LISTO\nEsperando billete...")
+    print("====== SISTEMA ACTIVO - ESPERANDO ENCODER PIN 8 ======")
+
+    # Estado previo del encoder para detectar flancos
+    estado_anterior = rpm_sensor.value()
+
+    # Cargar clasificador
     classifier_task = kpu.load(MODEL_CLASSIFIER)
-    
+
     while True:
-        # --- ESPERAR BILLETE (TCRT5000 entrada + RPM como confirmacion) ---
-        show_status("Esperando\nbillete...")
-        while sensor_entrada.value() == 1:
-            time.sleep_ms(100)
+        # --- ESPERAR ACTIVACION DEL ENCODER (flanco) ---
+        estado_actual = rpm_sensor.value()
+        if estado_actual != estado_anterior:
+            estado_anterior = estado_actual
 
-        show_status("Procesando...")
+            print("\n[!] Cambio detectado en encoder (Pin 8).")
+            alarma_detectado()
 
-        # --- ACTIVAR MOTORES DC (rodillos) ---
-        rollers_start(speed_pct=60)
-        # Esperar a que el billete llegue a zona de captura
-        timeout = time.ticks_ms()
-        while sensor_captura.value() == 1:
-            if time.ticks_diff(time.ticks_ms(), timeout) > 5000:
-                rollers_stop()
-                break
-            time.sleep_ms(50)
-        rollers_stop()
-        time.sleep_ms(200)  # estabilizar
-        
-        # --- FASE 1: CLASIFICACION (3 frames, promedio) ---
-        denom, rotado, conf_clas = classify_bill(classifier_task, n_frames=3)
-        print(f"Clasificacion: {denom} | Rotado: {rotado} | Conf: {conf_clas:.2%}")
-        
-        # --- LIBERAR CLASIFICADOR ---
-        kpu.deinit(classifier_task)
-        gc.collect()
-        
-        # --- FASE 2: DETECCION ---
-        detections = detect_features(denom)
-        print(f"Detecciones: {len(detections)}")
-        for label, x1, y1, x2, y2, conf in detections:
-            print(f"  {label}: ({x1},{y1})-({x2},{y2}) conf={conf:.2%}")
-        
-        # --- DETERMINAR LADO ---
-        lado = determine_side(detections)
-        print(f"Lado: {lado}")
-        
-        # --- RECORTAR CROPS ---
-        img_raw = sensor.snapshot()
-        crops = crop_features(img_raw, detections)
-        
-        # --- ENVIAR A RASPBERRY PI ---
-        send_to_pi(denom, rotado, lado, crops)
-        print("Datos enviados a Pi")
-        
-        # --- ESPERAR RESPUESTA ---
-        resultado, score = receive_from_pi(timeout_ms=8000)
-        print(f"Respuesta Pi: {resultado} (score={score})")
-        
-        # --- ACTUAR ---
-        if resultado == "REAL":
-            compuerta_autentico()
-            beep_aceptacion()
-        elif resultado == "FALSO":
-            compuerta_falso()
-            beep_rechazo()
-        else:
+            # Cooldown 5s
+            show_status("Cooldown 5s...")
+            print("Cooldown de 5 segundos activo...")
+            time.sleep(5.0)
+
+            beep_listo()
+            print("====== INICIANDO SECUENCIA DE INGESTION ======")
+
+            interrumpir = False
+
+            while True:
+                print("\n--- Iteracion del sistema ---")
+
+                # === FASES 1 y 2: INGESTION MECANICA ===
+                show_status("Ingestando\nbillete...")
+                hubo_cambio = ejecutar_fase_ingestion()
+
+                # === AQUI: DETECCION E INFERENCIA (despues del 2do avance) ===
+                show_status("Clasificando...")
+                sensor.run(1)
+                denom, resultado, score = ejecutar_fase_inferencia(classifier_task)
+
+                # Mostrar resultado en LCD
+                if resultado:
+                    show_result(denom, resultado, score)
+
+                # === FASE 3: TERCER AVANCE (SOLO DESPUES DEL VEREDICTO) ===
+                if resultado == "REAL":
+                    show_status(f"REAL {denom}\nExpulsando...")
+                    ejecutar_tercer_avance("REAL")
+                    beep_aceptacion()
+                    print(f"VEREDICTO: AUTENTICO ({score:.1%})")
+                elif resultado == "FALSO":
+                    show_status(f"FALSO {denom}\nExpulsando...")
+                    ejecutar_tercer_avance("FALSO")
+                    beep_rechazo()
+                    print(f"VEREDICTO: FALSO ({score:.1%})")
+                else:
+                    show_status("ERROR\nReintentando...")
+                    rollers_stop()
+                    compuerta_neutro()
+
+                # --- RECARGAR CLASIFICADOR ---
+                gc.collect()
+                classifier_task = kpu.load(MODEL_CLASSIFIER)
+
+                # --- VERIFICAR SI HUBO OTRO CAMBIO EN EL ENCODER ---
+                nuevo_estado = rpm_sensor.value()
+                if nuevo_estado != estado_anterior:
+                    print("\n[NUEVO] Cambio en encoder detectado durante la marcha!")
+                    estado_anterior = nuevo_estado
+                    interrumpir = True
+                else:
+                    interrumpir = False
+
+                # Si hubo interrupcion, ejecutar una iteracion extra y salir
+                if interrumpir:
+                    print("Ejecutando iteracion adicional antes del paro...")
+                    continue
+                else:
+                    break
+
+            # Resetear al final del ciclo
             compuerta_neutro()
-        
-        # Mostrar resultado
-        if resultado:
-            show_result(denom, resultado, score)
-        
-        time.sleep_ms(1000)
-        compuerta_neutro()
-        
-        # --- RECARGAR CLASIFICADOR PARA SIGUIENTE BILLETE ---
-        gc.collect()
-        classifier_task = kpu.load(MODEL_CLASSIFIER)
-        show_status("IR-BillVerifier\nLISTO")
+            rollers_stop()
+            beep_listo()
+
+            print("====== SISTEMA LISTO. ESPERANDO PROXIMO BILLETE ======")
+            show_status("SISTEMA LISTO\nEsperando billete...")
+            time.sleep(1.0)
+
+        time.sleep_ms(20)  # Muestreo del encoder
 
 # =============================================================================
 if __name__ == "__main__":
