@@ -3,16 +3,16 @@
 IR-BillVerifier - Maix Bit (K210) Firmware Principal
 =============================================================================
 Hardware:
-  - Motores DC: IO34 (ENA1) / IO35 (ENB2) via L298N, PWM 5KHz (TIMER0)
-  - Servo SG90 compuerta: IO33, PWM 50Hz (TIMER1)
-  - Encoder RPM FC-03: IO8, GPIOHS0 con IRQ
+  - Motores DC: IO9 (ENA + ENB) via L298N, PWM 1500Hz (TIMER0)
+  - Servo SG90 compuerta: IO10, PWM 50Hz (TIMER1)
+  - Encoder RPM FC-03: IO19, GPIOHS0 con IRQ, PULL_DOWN
   - Buzzer: IO20, PWM (TIMER2)
-  - TCRT5000 entrada: IO10, captura: IO11 (reserva)
+  - TCRT5000 entrada/captura: removidos (control via encoder)
   - UART RPi: IO6 TX / IO7 RX, 115200 baud
   - RGB LED: IO15 R / IO16 G / IO17 B
 
 Flujo:
-  1. Espera flanco en encoder (Pin 8) -> alarma + cooldown 5s
+  1. Espera flanco en encoder (Pin 19) -> alarma + cooldown 5s
   2. Servo baja (abre entrada)
   3. Motores DC avanzan 0.8s (primer jalado)
   4. Servo sube (cierra)
@@ -42,12 +42,9 @@ import gc
 # =============================================================================
 
 # Pines K210 - Sistema de ingestion con motores DC y encoder RPM
-PIN_SENSOR_ENTRADA = 10    # TCRT5000 ranura de entrada
-PIN_SENSOR_CAPTURA  = 11   # TCRT5000 zona de captura
-PIN_RPM             = 8    # Encoder optico FC-03 (velocidad + presencia billete)
-PIN_MOTOR1_ENA      = 34   # PWM L298N motor DC 1 (ENA)
-PIN_MOTOR2_ENB      = 35   # PWM L298N motor DC 2 (ENB)
-PIN_COMPUERTA       = 33   # PWM servo SG90 compuerta seleccion
+PIN_RPM             = 19   # Encoder optico FC-03 (velocidad + presencia billete)
+PIN_MOTORES         = 9    # PWM L298N ENA + ENB (ambos motores DC)
+PIN_COMPUERTA       = 10   # PWM servo SG90 compuerta seleccion
 PIN_LED_R           = 15
 PIN_LED_G           = 16
 PIN_LED_B           = 17
@@ -61,13 +58,7 @@ UART_RX = 7
 fm.register(UART_TX, fm.fpioa.UART1_TX, force=True)
 fm.register(UART_RX, fm.fpioa.UART1_RX, force=True)
 fm.register(PIN_RPM, fm.fpioa.GPIOHS0, force=True)
-fm.register(PIN_SENSOR_ENTRADA, fm.fpioa.GPIOHS1, force=True)
-fm.register(PIN_SENSOR_CAPTURA, fm.fpioa.GPIOHS2, force=True)
 uart = UART(UART1, baudrate=115200, timeout=1000, timeout_char=1000)
-
-# Sensores TCRT5000
-sensor_entrada = GPIO(GPIO.GPIOHS1, GPIO.IN, GPIO.PULL_UP)
-sensor_captura = GPIO(GPIO.GPIOHS2, GPIO.IN, GPIO.PULL_UP)
 
 # =============================================================================
 # MODELOS (rutas en SD)
@@ -322,29 +313,25 @@ def receive_from_pi(timeout_ms=5000):
 # =============================================================================
 
 # NOTA: Inicializar PWMs en setup()
-motor1_ena = None
-motor2_enb = None
+motores = None
 compuerta = None
 rpm_sensor = None
 rpm_pulses = 0           # Contador de pulsos del encoder
 
 def setup_actuators():
-    global motor1_ena, motor2_enb, compuerta
-    # PWM 5KHz para motores DC via L298N (TIMER0)
-    motor1_ena = PWM(PWM.TIMER0, freq=5000, duty=0, pin=PIN_MOTOR1_ENA)
-    motor2_enb = PWM(PWM.TIMER0, freq=5000, duty=0, pin=PIN_MOTOR2_ENB)
+    global motores, compuerta
+    # PWM 1500Hz para motores DC via L298N (TIMER0)
+    motores = PWM(PWM.TIMER0, freq=1500, duty=0, pin=PIN_MOTORES)
     # PWM 50Hz para servo SG90 compuerta (TIMER1)
     compuerta = PWM(PWM.TIMER1, freq=50, duty=7.5, pin=PIN_COMPUERTA)
 
 def rollers_start(speed_pct=50):
     """Activa motores DC. speed_pct: 0-100% del duty cycle"""
-    motor1_ena.duty(speed_pct)
-    motor2_enb.duty(speed_pct)
+    motores.duty(speed_pct)
 
 def rollers_stop():
     """Detiene motores DC (duty 0%)"""
-    motor1_ena.duty(0)
-    motor2_enb.duty(0)
+    motores.duty(0)
 
 def compuerta_autentico():
     """Servo a 0° (billete autentico)"""
@@ -370,7 +357,7 @@ def rpm_callback(pin):
 def setup_rpm():
     """Configura el encoder RPM con interrupcion por flanco"""
     global rpm_sensor
-    rpm_sensor = GPIO(GPIO.GPIOHS0, GPIO.IN, GPIO.PULL_UP)
+    rpm_sensor = GPIO(GPIO.GPIOHS0, GPIO.IN, GPIO.PULL_DOWN)
     rpm_sensor.irq(rpm_callback, GPIO.IRQ_FALLING)
 
 def bill_present(check_ms=200):
@@ -559,7 +546,7 @@ def main():
     compuerta_neutro()
 
     show_status("SISTEMA LISTO\nEsperando billete...")
-    print("====== SISTEMA ACTIVO - ESPERANDO ENCODER PIN 8 ======")
+    print("====== SISTEMA ACTIVO - ESPERANDO ENCODER PIN 19 ======")
 
     # Estado previo del encoder para detectar flancos
     estado_anterior = rpm_sensor.value()
@@ -573,7 +560,7 @@ def main():
         if estado_actual != estado_anterior:
             estado_anterior = estado_actual
 
-            print("\n[!] Cambio detectado en encoder (Pin 8).")
+            print("\n[!] Cambio detectado en encoder (Pin 19).")
             alarma_detectado()
 
             # Cooldown 5s
